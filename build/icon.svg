@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Manga Library icon">
+  <rect width="512" height="512" rx="96" fill="#161616"/>
+  <path d="M98 122c0-35 28-63 63-63h253v326H161c-35 0-63-28-63-63V122z" fill="#252525"/>
+  <path d="M151 119h210v218H151c-22 0-40-18-40-40V159c0-22 18-40 40-40z" fill="#e94f57"/>
+  <path d="M166 141h173v174H166c-17 0-31-14-31-31V172c0-17 14-31 31-31z" fill="#f6f0e5"/>
+  <path d="M374 83h40v326h-40z" fill="#101010"/>
+  <path d="M145 342h269v62H145c-17 0-31-14-31-31s14-31 31-31z" fill="#f6f0e5"/>
+  <path d="M147 362h209" stroke="#c8b9a2" stroke-width="12" stroke-linecap="round"/>
+  <path d="M147 386h188" stroke="#c8b9a2" stroke-width="8" stroke-linecap="round"/>
+  <path d="M201 196h105" stroke="#161616" stroke-width="20" stroke-linecap="round"/>
+  <path d="M201 239h79" stroke="#161616" stroke-width="20" stroke-linecap="round"/>
+  <path d="M320 133l45 45-45 45z" fill="#2bb3a3"/>
+</svg>

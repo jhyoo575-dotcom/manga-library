@@ -1,0 +1,8 @@
+ext {
+    extName = 'Manga Library'
+    extClass = '.MangaLibrary'
+    extVersionCode = 1
+    isNsfw = true
+}
+
+apply from: "$rootDir/common.gradle"
