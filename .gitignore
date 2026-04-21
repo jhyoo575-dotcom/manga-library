@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Electron / build outputs
+dist/
+out/
+release/
+*.exe
+*.msi
+*.dmg
+*.AppImage
+
+# Android / Mihon extension build outputs
+android-sdk/
+mihon-extension-build/
+commandlinetools-*_latest.zip
+*.apk
+*.aab
+*.ap_
+local.properties
+.gradle/
+.kotlin/
+
+# App/runtime data
+*.db
+*.sqlite
+*.sqlite3
+library.db
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Secrets / signing material
+.env
+.env.*
+*.jks
+*.keystore
+*.pem
+*.p12
+*.key
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

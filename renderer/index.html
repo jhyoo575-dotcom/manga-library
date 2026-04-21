@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manga Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=Bebas+Neue&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- 타이틀바 -->
+<div id="titlebar">
+  <div class="tb-drag">
+    <svg class="tb-logo" viewBox="0 0 20 20" fill="none">
+      <rect x="2" y="5" width="3" height="11" rx="1" fill="#c0392b"/>
+      <rect x="7" y="3" width="3" height="13" rx="1" fill="#e74c3c"/>
+      <rect x="12" y="4" width="3" height="12" rx="1" fill="#c0392b" opacity=".7"/>
+      <rect x="17" y="6" width="2" height="10" rx="1" fill="#e74c3c" opacity=".5"/>
+    </svg>
+    <span class="tb-title">MANGA LIBRARY</span>
+  </div>
+  <div class="tb-controls">
+    <button onclick="api.win.minimize()" aria-label="최소화">─</button>
+    <button onclick="api.win.maximize()" aria-label="최대화">□</button>
+    <button onclick="api.win.close()" class="tb-close" aria-label="닫기">✕</button>
+  </div>
+</div>
+
+<div id="layout">
+  <!-- 사이드바 -->
+  <nav id="sidebar">
+    <div class="sb-top">
+      <!-- 통계 -->
+      <div class="stat-row" id="stats">
+        <div class="stat"><div class="stat-v" id="st-total">—</div><div class="stat-k">전체</div></div>
+        <div class="stat"><div class="stat-v" id="st-read">—</div><div class="stat-k">읽음</div></div>
+        <div class="stat"><div class="stat-v" id="st-avg">—</div><div class="stat-k">평균점</div></div>
+      </div>
+
+      <!-- 네비게이션 -->
+      <div class="sb-section">
+        <div class="sb-label">탐색</div>
+        <button class="nav-btn active" data-view="gallery" onclick="showView('gallery', this)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+          갤러리
+        </button>
+        <button class="nav-btn" data-view="artist" onclick="openArtistView(this)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="5" r="2.5"/><path d="M2.5 14c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/></svg>
+          작가별
+        </button>
+        <button class="nav-btn" data-view="settings" onclick="showView('settings', this)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 10a2 2 0 100-4 2 2 0 000 4z"/><path d="M8 2v1M8 13v1M2 8h1M13 8h1M3.5 3.5l.7.7M11.8 11.8l.7.7M3.5 12.5l.7-.7M11.8 4.2l.7-.7"/></svg>
+          설정 &amp; 루트
+        </button>
+        <button class="nav-btn" data-view="mihon" onclick="showView('mihon', this)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 7h6M5 10h4"/></svg>
+          Mihon 연동
+        </button>
+      </div>
+
+      <!-- 태그 필터 -->
+      <div class="sb-section">
+        <div class="sb-label" style="display:flex;align-items:center;justify-content:space-between">
+          태그 필터
+          <button class="ghost-btn" onclick="clearTagFilter()" id="tag-clear-btn" style="display:none">지우기</button>
+        </div>
+        <div class="tag-search-wrap">
+          <input type="text" id="tag-search" class="tag-search" placeholder="태그 검색…" oninput="filterTagList(this.value)">
+        </div>
+        <div id="tag-list" class="tag-list"></div>
+      </div>
+    </div>
+
+    <div class="sb-bottom">
+      <div class="sb-label">루트 경로</div>
+      <div id="root-list-mini"></div>
+    </div>
+  </nav>
+
+  <!-- 메인 영역 -->
+  <main id="main">
+    <!-- 갤러리 뷰 -->
+    <div id="view-gallery" class="view active">
+      <!-- 툴바 -->
+      <div id="toolbar">
+        <div class="tb-search-wrap">
+          <svg class="tb-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4"/><path d="M10.5 10.5L14 14"/></svg>
+          <input type="search" id="search" placeholder="제목 검색… ( / )" oninput="onSearch(this.value)">
+        </div>
+        <select id="sort-sel" onchange="onSort(this.value)">
+          <option value="date_added|DESC">최근 추가순</option>
+          <option value="title|ASC">제목 ↑</option>
+          <option value="title|DESC">제목 ↓</option>
+          <option value="grade|DESC">평점 높은순</option>
+          <option value="view_count|DESC">조회 많은순</option>
+          <option value="page_count|DESC">페이지 많은순</option>
+        </select>
+        <div class="view-toggle">
+          <button class="vt-btn active" id="vt-grid" onclick="setGridView('grid', this)">⊞</button>
+          <button class="vt-btn" id="vt-list" onclick="setGridView('list', this)">≡</button>
+        </div>
+        <div class="size-ctrl">
+          <span>⊟</span>
+          <input type="range" id="size-sl" min="1" max="5" value="3" oninput="onSizeChange(this.value)">
+          <span>⊞</span>
+        </div>
+        <div class="toolbar-sep"></div>
+        <button class="delete-mode-btn" id="sel-mode-btn" onclick="toggleSelectMode()" title="삭제 선택">삭제</button>
+      </div>
+      <!-- 선택 액션바 -->
+      <div id="select-bar" style="display:none">
+        <span id="sel-count" class="sel-count">0개 선택됨</span>
+        <button class="sel-btn" onclick="selectAll()">전체</button>
+        <button class="sel-del-btn" id="sel-del-btn" onclick="deleteSelected()" disabled>삭제</button>
+        <button class="sel-cancel-btn" onclick="exitSelectMode()">해제</button>
+      </div>
+      <!-- 인포바 -->
+      <div id="infobar"><span id="info-text"></span></div>
+      <!-- 그리드 -->
+      <div id="grid-container">
+        <div id="grid"></div>
+        <div id="list-view" style="display:none"></div>
+        <div id="empty-state" style="display:none">
+          <div class="empty-icon">📚</div>
+          <div class="empty-title">작품이 없습니다</div>
+          <div class="empty-sub">루트 경로를 추가하고 스캔해보세요</div>
+        </div>
+        <div id="loading-state" style="display:none">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <!-- 페이저 -->
+      <div id="pager"></div>
+    </div>
+
+    <!-- 작가별 뷰 -->
+    <div id="view-artist" class="view">
+      <div id="artist-toolbar">
+        <div class="tb-search-wrap">
+          <svg class="tb-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4"/><path d="M10.5 10.5L14 14"/></svg>
+          <input type="search" id="artist-search" placeholder="작가/시리즈/작품 검색..." oninput="onArtistSearch(this.value)">
+        </div>
+        <select id="artist-sort-sel" onchange="onArtistSort(this.value)">
+          <option value="artist|ASC">이름 ↑</option>
+          <option value="artist|DESC">이름 ↓</option>
+          <option value="work_count|DESC">작품 많은순</option>
+          <option value="date_added|DESC">최근 추가순</option>
+          <option value="title|ASC">제목 ↑</option>
+          <option value="grade|DESC">평점 높은순</option>
+          <option value="page_count|DESC">페이지 많은순</option>
+        </select>
+        <div class="size-ctrl">
+          <span>작게</span>
+          <input type="range" id="artist-size-sl" min="1" max="5" value="3" oninput="onArtistSizeChange(this.value)">
+          <span>크게</span>
+        </div>
+      </div>
+      <!-- 브레드크럼 -->
+      <div id="artist-bc">
+        <button class="bc-btn" id="bc-root" onclick="artistNavTo('root')">작가 목록</button>
+        <span class="bc-sep" id="bc-sep1" style="display:none">›</span>
+        <button class="bc-btn" id="bc-artist-btn" style="display:none" onclick="artistNavTo('artist')"></button>
+        <span class="bc-sep" id="bc-sep2" style="display:none">›</span>
+        <span class="bc-current" id="bc-series-lbl" style="display:none"></span>
+      </div>
+      <!-- 그리드 -->
+      <div id="artist-grid-wrap">
+        <div id="artist-grid"></div>
+        <div id="artist-empty" style="display:none">
+          <div class="empty-icon">🎨</div>
+          <div class="empty-title">작가 정보 없음</div>
+          <div class="empty-sub" id="artist-empty-sub">'망가'가 포함된 폴더를 루트로 추가한 뒤 다시 스캔하세요.</div>
+        </div>
+        <div id="artist-loading" style="display:none"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- 설정 뷰 -->
+    <div id="view-settings" class="view">
+      <div class="settings-wrap">
+        <h2 class="settings-title">루트 경로 관리</h2>
+        <div class="settings-desc">스캔할 폴더를 등록하세요. 이미지가 직접 들어있는 하위 폴더가 작품으로 인식됩니다.</div>
+
+        <div class="root-add-row">
+          <input type="text" id="root-input" class="root-input" placeholder="D:\망가(A~D)">
+          <input type="text" id="root-label" class="root-input root-label" placeholder="레이블 (선택)">
+          <button class="btn-ghost" onclick="pickFolder()">폴더 선택</button>
+          <button class="btn-primary" onclick="addRoot()">추가</button>
+        </div>
+
+        <div id="root-list" class="root-list"></div>
+
+        <!-- 스캔 패널 -->
+        <div id="scan-panel" class="scan-panel" style="display:none">
+          <div class="scan-header">
+            <span id="scan-root-name" class="scan-root-name"></span>
+            <div class="scan-actions">
+              <button class="btn-ghost" onclick="cancelScan()">중단</button>
+            </div>
+          </div>
+          <div class="scan-progress-bar"><div id="scan-bar-fill"></div></div>
+          <div id="scan-status" class="scan-status"></div>
+          <div id="scan-count" class="scan-count"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mihon 연동 뷰 -->
+    <div id="view-mihon" class="view">
+      <div class="settings-wrap">
+        <h2 class="settings-title">Mihon / Tachiyomi 연동</h2>
+        <div class="settings-desc">아래 주소를 Mihon 앱에서 등록하세요. PC와 안드로이드가 같은 네트워크에 있어야 합니다.</div>
+
+        <div id="server-info" class="server-info">
+          <div class="si-loading">서버 정보 로딩 중…</div>
+        </div>
+
+        <div class="mihon-guide">
+          <h3>Manga Library 전용 확장 사용</h3>
+          <ol>
+            <li>전용 Mihon 확장 APK를 설치합니다.</li>
+            <li>확장의 서버 주소에 위의 <strong>/mihon</strong> 주소를 입력합니다.</li>
+            <li>Popular는 전체 작품, Latest는 최근 추가 작품, Search는 제목 검색으로 동작합니다.</li>
+          </ol>
+          <details class="legacy-guide">
+            <summary>레거시 Komga / OPDS 안내</summary>
+            <ol>
+              <li>Komga 호환 API는 확장 요구 필드가 많아 비권장입니다.</li>
+              <li>OPDS는 별도 OPDS 지원 확장이 있을 때만 사용하세요.</li>
+            </ol>
+          </details>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ── 작품 상세 모달 ─────────────────────── -->
+<div id="detail-overlay" onclick="closeDetail(event)" style="display:none">
+  <div id="detail-modal">
+    <button class="detail-close" onclick="closeDetailBtn()">✕</button>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<!-- ── 이미지 뷰어 ─────────────────────────── -->
+<div id="viewer-overlay" style="display:none">
+  <div id="viewer">
+    <div id="viewer-header">
+      <button class="v-btn" onclick="closeViewer()">✕</button>
+      <span id="viewer-title"></span>
+      <span id="viewer-page-info"></span>
+      <div style="flex:1"></div>
+      <button class="v-btn" onclick="toggleViewerMode()">⇔</button>
+    </div>
+    <div id="viewer-body">
+      <button id="viewer-close-float" type="button" onclick="closeViewer()" title="닫기">X</button>
+      <button class="v-nav v-prev" onclick="viewerGo(-1)">‹</button>
+      <div id="viewer-img-wrap">
+        <img id="viewer-img" src="" alt="" ondblclick="toggleZoom()">
+        <video id="viewer-video" controls style="display:none"></video>
+      </div>
+      <button class="v-nav v-next" onclick="viewerGo(1)">›</button>
+    </div>
+    <div id="viewer-footer">
+      <div id="viewer-strip"></div>
+      <div id="viewer-prog-wrap">
+        <div id="viewer-prog-bar" onclick="viewerJump(event)">
+          <div id="viewer-prog-fill"></div>
+          <div id="viewer-prog-thumb"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="context-menu" style="display:none">
+  <button class="ctx-danger" onclick="deleteContextWork()">삭제</button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "manga-library",
+  "version": "1.0.0",
+  "description": "로컬 망가/이미지 라이브러리 관리 앱 with Mihon 연동",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.mangalibrary.app",
+    "productName": "Manga Library",
+    "directories": { "output": "dist" },
+    "win": { "target": "nsis" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
+    "files": ["src/**/*", "renderer/**/*", "node_modules/**/*"],
+    "asar": true
+  }
+}
