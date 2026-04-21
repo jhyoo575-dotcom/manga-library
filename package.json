@@ -1,13 +1,13 @@
 {
   "name": "manga-library",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Local manga and image library manager with Mihon integration",
   "author": "jhyoo575-dotcom",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "generate:icon": "powershell -ExecutionPolicy Bypass -File scripts/generate-icon.ps1",
-    "build": "npm run generate:icon && electron-builder",
+    "build": "npm run generate:icon && electron-builder --publish never",
     "build:mihon": "powershell -ExecutionPolicy Bypass -File scripts/build-mihon-extension.ps1",
     "release:local": "npm run build && npm run build:mihon"
   },
