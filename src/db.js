@@ -54,6 +54,7 @@ function _createSchema() {
       title        TEXT    NOT NULL,
       root_id      INTEGER REFERENCES root_paths(id) ON DELETE CASCADE,
       cover_path   TEXT,
+      thumb_path   TEXT,
       page_count   INTEGER DEFAULT 0,
       has_video    INTEGER DEFAULT 0,
       date_added   INTEGER DEFAULT (strftime('%s','now')),
@@ -87,6 +88,7 @@ function _createSchema() {
   // 기존 DB 마이그레이션 — 컬럼이 이미 있으면 무시
   try { db.run('ALTER TABLE works ADD COLUMN artist TEXT'); } catch {}
   try { db.run('ALTER TABLE works ADD COLUMN series TEXT'); } catch {}
+  try { db.run('ALTER TABLE works ADD COLUMN thumb_path TEXT'); } catch {}
 }
 
 function queryAll(sql, params) {
@@ -127,12 +129,12 @@ function updateRootLabel(id, label) { run('UPDATE root_paths SET label = ? WHERE
 function upsertWork(data) {
   const ex = queryOne('SELECT id FROM works WHERE folder_path = ?', [data.folder_path]);
   if (ex) {
-    run(`UPDATE works SET title=?,cover_path=?,page_count=?,has_video=?,artist=?,series=?,date_scanned=strftime('%s','now') WHERE id=?`,
-      [data.title, data.cover_path, data.page_count, data.has_video, data.artist||null, data.series||null, ex.id]);
+    run(`UPDATE works SET title=?,cover_path=?,thumb_path=?,page_count=?,has_video=?,artist=?,series=?,date_scanned=strftime('%s','now') WHERE id=?`,
+      [data.title, data.cover_path, data.thumb_path || null, data.page_count, data.has_video, data.artist||null, data.series||null, ex.id]);
     return ex.id;
   }
-  run('INSERT INTO works (folder_path,title,root_id,cover_path,page_count,has_video,artist,series) VALUES (?,?,?,?,?,?,?,?)',
-    [data.folder_path, data.title, data.root_id, data.cover_path, data.page_count, data.has_video, data.artist||null, data.series||null]);
+  run('INSERT INTO works (folder_path,title,root_id,cover_path,thumb_path,page_count,has_video,artist,series) VALUES (?,?,?,?,?,?,?,?,?)',
+    [data.folder_path, data.title, data.root_id, data.cover_path, data.thumb_path || null, data.page_count, data.has_video, data.artist||null, data.series||null]);
   return lastId();
 }
 
@@ -277,7 +279,8 @@ function db_compat() {
     prepare: (sql) => ({
       get:  (...args) => queryOne(sql, args.flat()),
       all:  (...args) => queryAll(sql, args.flat()),
-    })
+    }),
+    run: (sql, params) => run(sql, params),
   };
 }
 

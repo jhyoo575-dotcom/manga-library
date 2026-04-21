@@ -4,6 +4,13 @@ const path   = require('path');
 const fs     = require('fs');
 const url    = require('url');
 const crypto = require('crypto');
+const thumbs = require('./main/thumbs/thumb-service');
+const {
+  isZipEntryPath,
+  getZipEntryBuffer,
+  getMediaBasename,
+  getMediaExt,
+} = require('./zip-utils');
 
 let _db         = null;
 let _server     = null;
@@ -27,7 +34,7 @@ function stop() {
 }
 
 // ── 라우터 ─────────────────────────────────────────────────
-function handleRequest(req, res) {
+async function handleRequest(req, res) {
   const parsed  = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
@@ -42,9 +49,12 @@ function handleRequest(req, res) {
     if (pathname.startsWith('/file/')) {
       return serveFile(req, res, pathname);
     }
+    if (pathname.startsWith('/zip/')) {
+      return serveZipEntry(req, res, pathname);
+    }
     // ── 썸네일 ──
     if (pathname.startsWith('/thumb/')) {
-      return serveThumbnail(req, res, parsed);
+      return await serveThumbnail(req, res, parsed);
     }
 
     // ── Manga Library 전용 Mihon 확장 API ──
@@ -71,7 +81,7 @@ function handleRequest(req, res) {
     // GET /api/v1/books/:id/pages/:n/raw — 페이지 이미지
     if (pathname.match(/^\/api\/v1\/books\/\d+\/pages\/\d+\/raw$/)) return apiPageRaw(req, res, pathname);
     // GET /api/v1/series/:id/thumbnail
-    if (pathname.match(/^\/api\/v1\/series\/\d+\/thumbnail$/)) return apiSeriesThumb(req, res, pathname);
+    if (pathname.match(/^\/api\/v1\/series\/\d+\/thumbnail$/)) return await apiSeriesThumb(req, res, pathname);
     // GET /api/v1/libraries         — 라이브러리 목록 (루트 경로들)
     if (pathname === '/api/v1/libraries') return apiLibraries(req, res);
 
@@ -127,25 +137,71 @@ function serveFile(req, res, pathname) {
   }
 }
 
+function serveZipEntry(req, res, pathname) {
+  const encoded = pathname.slice('/zip/'.length);
+  const filePath = 'zip://' + encoded;
+  const buffer = getZipEntryBuffer(filePath);
+  if (!buffer) { res.writeHead(404); res.end('Not found'); return; }
+
+  res.writeHead(200, {
+    'Content-Type': getMime(getMediaExt(filePath)),
+    'Content-Length': buffer.length,
+    'Cache-Control': 'max-age=86400',
+  });
+  res.end(buffer);
+}
+
 // ── 썸네일 서빙 ────────────────────────────────────────────
-function serveThumbnail(req, res, parsed) {
+async function serveThumbnail(req, res, parsed) {
   const workId = parseInt(
     typeof parsed === 'object' && parsed.pathname
       ? parsed.pathname.slice('/thumb/'.length)
       : String(parsed)
   );
-  const work = _db.prepare('SELECT cover_path FROM works WHERE id = ?').get(workId);
-  if (!work || !work.cover_path || !fs.existsSync(work.cover_path)) {
+  const work = _db.prepare('SELECT w.*, rp.path as root_path FROM works w LEFT JOIN root_paths rp ON rp.id = w.root_id WHERE w.id = ?').get(workId);
+  if (!work || !work.cover_path || (!isZipEntryPath(work.cover_path) && !fs.existsSync(work.cover_path))) {
     res.writeHead(404); res.end(); return;
   }
-  // sharp 없이 원본 이미지 그대로 서빙 (CSS object-fit으로 클라이언트에서 크롭)
+
+  const thumbPath = await thumbs.ensureThumbnail(work);
+  if (thumbPath && fs.existsSync(thumbPath)) {
+    if (thumbPath !== work.thumb_path && _db.run) {
+      _db.run('UPDATE works SET thumb_path = ? WHERE id = ?', [thumbPath, workId]);
+    }
+    fallbackServe(res, thumbPath);
+    return;
+  }
+
   fallbackServe(res, work.cover_path);
 }
 
 function fallbackServe(res, filePath) {
+  if (isZipEntryPath(filePath)) {
+    const buffer = getZipEntryBuffer(filePath);
+    if (!buffer) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, {
+      'Content-Type': getMime(getMediaExt(filePath)),
+      'Content-Length': buffer.length,
+      'Cache-Control': 'max-age=604800',
+    });
+    res.end(buffer);
+    return;
+  }
+
   const mime = getMime(path.extname(filePath).toLowerCase());
   const stat = fs.statSync(filePath);
   res.writeHead(200, { 'Content-Type': mime, 'Content-Length': stat.size, 'Cache-Control': 'max-age=604800' });
+  fs.createReadStream(filePath).pipe(res);
+}
+
+function serveMediaPath(res, filePath) {
+  if (!filePath) { res.writeHead(404); res.end('Not found'); return; }
+  if (isZipEntryPath(filePath)) return fallbackServe(res, filePath);
+  if (!fs.existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
+
+  const mime = getMime(path.extname(filePath).toLowerCase());
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, { 'Content-Type': mime, 'Content-Length': stat.size, 'Cache-Control': 'max-age=86400' });
   fs.createReadStream(filePath).pipe(res);
 }
 
@@ -208,8 +264,8 @@ function apiBookPages(req, res, pathname) {
 
   jsonRes(res, images.map((imgPath, i) => ({
     number:    i + 1,
-    fileName:  path.basename(imgPath),
-    mediaType: getMime(path.extname(imgPath).toLowerCase()),
+    fileName:  getMediaBasename(imgPath),
+    mediaType: getMime(getMediaExt(imgPath)),
     url:       `/api/v1/books/${id}/pages/${i + 1}/raw`,
     width:     0, height: 0,
   })));
@@ -225,21 +281,12 @@ function apiPageRaw(req, res, pathname) {
   const { getWorkFiles } = require('./scan-engine');
   const { images } = getWorkFiles(work.folder_path);
   const imgPath = images[pageNo - 1];
-  if (!imgPath || !fs.existsSync(imgPath)) { res.writeHead(404); res.end(); return; }
-
-  const mime = getMime(path.extname(imgPath).toLowerCase());
-  const stat = fs.statSync(imgPath);
-  res.writeHead(200, { 'Content-Type': mime, 'Content-Length': stat.size, 'Cache-Control': 'max-age=86400' });
-  fs.createReadStream(imgPath).pipe(res);
+  return serveMediaPath(res, imgPath);
 }
 
 function apiSeriesThumb(req, res, pathname) {
   const id = parseInt(pathname.split('/')[4]);
-  const work = _db.prepare('SELECT cover_path FROM works WHERE id = ?').get(id);
-  if (!work || !work.cover_path || !fs.existsSync(work.cover_path)) {
-    res.writeHead(404); res.end(); return;
-  }
-  fallbackServe(res, work.cover_path);
+  return serveThumbnail(req, res, String(id));
 }
 
 // ── Manga Library 전용 Mihon 확장 API ─────────────────────────
@@ -386,9 +433,9 @@ function mihonPages(req, res, pathname) {
     pages: images.map((imgPath, i) => ({
       index: i,
       number: i + 1,
-      fileName: path.basename(imgPath),
+      fileName: getMediaBasename(imgPath),
       imageUrl: `${origin(req)}/mihon/work/${id}/pages/${i + 1}/raw`,
-      mediaType: getMime(path.extname(imgPath).toLowerCase()),
+      mediaType: getMime(getMediaExt(imgPath)),
     })),
   });
 }
@@ -403,12 +450,7 @@ function mihonPageRaw(req, res, pathname) {
   const { getWorkFiles } = require('./scan-engine');
   const { images } = getWorkFiles(work.folder_path);
   const imgPath = images[pageNo - 1];
-  if (!imgPath || !fs.existsSync(imgPath)) { res.writeHead(404); res.end('Not found'); return; }
-
-  const mime = getMime(path.extname(imgPath).toLowerCase());
-  const stat = fs.statSync(imgPath);
-  res.writeHead(200, { 'Content-Type': mime, 'Content-Length': stat.size, 'Cache-Control': 'max-age=86400' });
-  fs.createReadStream(imgPath).pipe(res);
+  return serveMediaPath(res, imgPath);
 }
 
 function mihonWorkDto(req, w) {
@@ -502,8 +544,8 @@ function opdsSeries(req, res, pathname) {
     <id>urn:manga-library:page:${work.id}:${i}</id>
     <title>Page ${i + 1}</title>
     <updated>${new Date().toISOString()}</updated>
-    <link rel="http://opds-spec.org/image" href="${encodeFilePath(imgPath)}" type="${getMime(path.extname(imgPath).toLowerCase())}"/>
-    <link rel="http://opds-spec.org/acquisition" href="${encodeFilePath(imgPath)}" type="${getMime(path.extname(imgPath).toLowerCase())}"/>
+    <link rel="http://opds-spec.org/image" href="${encodeMediaPath(imgPath)}" type="${getMime(getMediaExt(imgPath))}"/>
+    <link rel="http://opds-spec.org/acquisition" href="${encodeMediaPath(imgPath)}" type="${getMime(getMediaExt(imgPath))}"/>
   </entry>`).join('');
 
     xmlRes(res, `<?xml version="1.0" encoding="UTF-8"?>
@@ -697,6 +739,11 @@ function buildCountSQL(search, rootIds) {
 
 function encodeFilePath(filePath) {
   return '/file/' + encodeURIComponent(Buffer.from(filePath, 'utf8').toString('base64'));
+}
+
+function encodeMediaPath(filePath) {
+  if (isZipEntryPath(filePath)) return '/zip/' + filePath.slice('zip://'.length);
+  return encodeFilePath(filePath);
 }
 
 function getMime(ext) {

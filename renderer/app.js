@@ -32,10 +32,72 @@ const S = {
 };
 
 const CARD_SIZES = [110, 140, 170, 210, 260];
+const THUMB_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+const RENDER_CHUNK_SIZE = 120;
+let thumbObserver = null;
+
+function lazyThumb(className, src, alt = '') {
+  return `<img class="${className} lazy-thumb" src="${THUMB_PLACEHOLDER}" data-src="${src}" alt="${esc(alt)}">`;
+}
+
+function observeLazyThumbs(root = document) {
+  const imgs = [...root.querySelectorAll('img.lazy-thumb[data-src]')];
+  if (!imgs.length) return;
+
+  if (!('IntersectionObserver' in window)) {
+    imgs.forEach(loadLazyThumb);
+    return;
+  }
+
+  if (!thumbObserver) {
+    thumbObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        loadLazyThumb(entry.target);
+        thumbObserver.unobserve(entry.target);
+      });
+    }, { rootMargin: '360px 0px', threshold: 0.01 });
+  }
+
+  imgs.forEach(img => thumbObserver.observe(img));
+}
+
+function loadLazyThumb(img) {
+  const src = img.dataset.src;
+  if (!src) return;
+  img.src = src;
+  img.removeAttribute('data-src');
+}
+
+function setChunkedHtml(el, htmlItems) {
+  if (thumbObserver) {
+    el.querySelectorAll('img.lazy-thumb[data-src]').forEach(img => thumbObserver.unobserve(img));
+  }
+
+  if (!Array.isArray(htmlItems)) {
+    el.innerHTML = htmlItems || '';
+    observeLazyThumbs(el);
+    return;
+  }
+
+  el.innerHTML = '';
+  let index = 0;
+  const append = () => {
+    const chunk = htmlItems.slice(index, index + RENDER_CHUNK_SIZE).join('');
+    el.insertAdjacentHTML('beforeend', chunk);
+    observeLazyThumbs(el);
+    index += RENDER_CHUNK_SIZE;
+    if (index < htmlItems.length) requestAnimationFrame(append);
+  };
+  append();
+}
 
 // ── 경로 → URL 인코딩 (한글/특수문자 완전 대응) ──
 // renderer에는 Node Buffer가 없으므로 TextEncoder로 UTF-8 바이트 → base64
 function pathToFileUrl(filePath) {
+  if (typeof filePath === 'string' && filePath.startsWith('zip://')) {
+    return `http://127.0.0.1:17099/zip/${encodeURIComponent(filePath.slice('zip://'.length))}`;
+  }
   const bytes = new TextEncoder().encode(filePath);
   let binary  = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -247,7 +309,7 @@ function renderGrid(works) {
   const w = CARD_SIZES[S.cardSize - 1];
   document.getElementById('grid').style.setProperty('--card-w', w + 'px');
 
-  grid.innerHTML = works.map(work => {
+  setChunkedHtml(grid, works.map(work => {
     const thumbUrl = work.cover_path ? `http://127.0.0.1:17099/thumb/${work.id}` : null;
     const sel      = S.selectedIds.has(work.id);
     const cls      = `card${S.selectMode ? ' selectable' : ''}${sel ? ' selected' : ''}`;
@@ -256,7 +318,7 @@ function renderGrid(works) {
       ${S.selectMode ? `<div class="card-check">${sel ? '✓' : ''}</div>` : ''}
       ${work.is_read ? '<div class="card-read-badge">✓</div>' : ''}
       ${thumbUrl
-        ? `<img class="card-thumb" src="${thumbUrl}" loading="lazy" alt="${esc(work.title)}">`
+        ? lazyThumb('card-thumb', thumbUrl, work.title)
         : `<div class="card-thumb-placeholder">📖</div>`}
       <div class="card-body">
         <div class="card-title">${esc(work.title)}</div>
@@ -266,7 +328,7 @@ function renderGrid(works) {
         </div>
       </div>
     </div>`;
-  }).join('');
+  }));
 }
 
 function renderListView(works) {
@@ -275,7 +337,7 @@ function renderListView(works) {
   grid.style.display = 'none';
   lv.style.display   = '';
 
-  lv.innerHTML = works.map(work => {
+  setChunkedHtml(lv, works.map(work => {
     const thumbUrl = work.cover_path ? `http://127.0.0.1:17099/thumb/${work.id}` : null;
     const sel      = S.selectedIds.has(work.id);
     const cls      = `list-item${S.selectMode ? ' selectable' : ''}${sel ? ' selected' : ''}`;
@@ -283,12 +345,12 @@ function renderListView(works) {
     return `<div class="${cls}" onclick="${click}" oncontextmenu="openWorkContextMenu(event, ${work.id})">
       ${S.selectMode ? `<div class="list-check">${sel ? '✓' : ''}</div>` : ''}
       ${thumbUrl
-        ? `<img class="list-thumb" src="${thumbUrl}" loading="lazy" alt="">`
+        ? lazyThumb('list-thumb', thumbUrl)
         : `<div class="list-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px">📖</div>`}
       <div class="list-title">${esc(work.title)}</div>
       <div class="list-meta">${work.page_count}p${work.grade > 0 ? ` · ★${Number(work.grade).toFixed(1)}` : ''}</div>
     </div>`;
-  }).join('');
+  }));
 }
 
 function renderPager() {
@@ -371,13 +433,13 @@ async function openDetail(id) {
 
   // 이미지 스트립 — pathToFileUrl로 안전하게 인코딩
   const strip = (work.files.images || []).slice(0, 12).map((imgPath, i) =>
-    `<img src="${pathToFileUrl(imgPath)}" loading="lazy"
+    `<img class="lazy-thumb" src="${THUMB_PLACEHOLDER}" data-src="${pathToFileUrl(imgPath)}"
       onclick="openViewer(${id}, ${i})" alt="p${i+1}">`
   ).join('');
 
   content.innerHTML = `
     <div class="d-cover-row">
-      ${thumbUrl ? `<img class="d-cover" src="${thumbUrl}" alt="">` : '<div class="d-cover"></div>'}
+      ${thumbUrl ? lazyThumb('d-cover', thumbUrl) : '<div class="d-cover"></div>'}
       <div class="d-info">
         <div class="d-title">${esc(work.title)}</div>
         <div class="d-meta-row">
@@ -414,6 +476,7 @@ async function openDetail(id) {
   `;
 
   overlay.style.display = 'flex';
+  observeLazyThumbs(content);
 }
 
 function closeDetail(e) {
@@ -669,8 +732,9 @@ function toggleViewerMode() {
 function renderViewerStrip() {
   const strip = document.getElementById('viewer-strip');
   strip.innerHTML = S.viewer.files.map((f, i) =>
-    `<img src="${f.url}" loading="lazy" onclick="showViewerPage(${i})" alt="p${i+1}">`
+    `<img class="lazy-thumb" src="${THUMB_PLACEHOLDER}" data-src="${f.url}" onclick="showViewerPage(${i})" alt="p${i+1}">`
   ).join('');
+  observeLazyThumbs(strip);
 }
 
 // ── 작가별 뷰 ──────────────────────────────────
@@ -803,18 +867,18 @@ function renderArtistCards(artists) {
   _artistData = artists;
   const grid = document.getElementById('artist-grid');
   grid.style.setProperty('--card-w', CARD_SIZES[A.cardSize - 1] + 'px');
-  grid.innerHTML = artists.map((a, i) => {
+  setChunkedHtml(grid, artists.map((a, i) => {
     const thumb = a.sample_id ? `http://127.0.0.1:17099/thumb/${a.sample_id}` : null;
     return `<div class="card artist-card" onclick="_artistClick(${i})">
       ${thumb
-        ? `<img class="card-thumb" src="${thumb}" loading="lazy" alt="${esc(a.artist)}">`
+        ? lazyThumb('card-thumb', thumb, a.artist)
         : `<div class="card-thumb-placeholder">🎨</div>`}
       <div class="card-body">
         <div class="card-title">${esc(a.artist)}</div>
         <div class="card-meta"><span class="card-pages">${a.work_count}작품</span></div>
       </div>
     </div>`;
-  }).join('');
+  }));
 }
 
 function renderArtistDetail(seriesList, directWorks) {
@@ -827,23 +891,22 @@ function renderArtistDetail(seriesList, directWorks) {
     return `<div class="card series-card" onclick="_seriesClick(${i})">
       <div class="series-badge">시리즈 ${s.work_count}</div>
       ${thumb
-        ? `<img class="card-thumb" src="${thumb}" loading="lazy" alt="${esc(s.series)}">`
+        ? lazyThumb('card-thumb', thumb, s.series)
         : `<div class="card-thumb-placeholder">📚</div>`}
       <div class="card-body">
         <div class="card-title">${esc(s.series)}</div>
         <div class="card-meta"><span class="card-pages">${s.work_count}편</span></div>
       </div>
     </div>`;
-  }).join('');
+  });
 
-  const worksHtml = directWorks.map(w => _workCard(w)).join('');
-  grid.innerHTML = seriesHtml + worksHtml;
+  setChunkedHtml(grid, [...seriesHtml, ...directWorks.map(w => _workCard(w))]);
 }
 
 function renderArtistWorks(works) {
   const grid = document.getElementById('artist-grid');
   grid.style.setProperty('--card-w', CARD_SIZES[A.cardSize - 1] + 'px');
-  grid.innerHTML = works.map(w => _workCard(w)).join('');
+  setChunkedHtml(grid, works.map(w => _workCard(w)));
 }
 
 function _workCard(work) {
@@ -851,7 +914,7 @@ function _workCard(work) {
   return `<div class="card" onclick="openDetail(${work.id})" oncontextmenu="openWorkContextMenu(event, ${work.id})">
     ${work.is_read ? '<div class="card-read-badge">✓</div>' : ''}
     ${thumb
-      ? `<img class="card-thumb" src="${thumb}" loading="lazy" alt="${esc(work.title)}">`
+      ? lazyThumb('card-thumb', thumb, work.title)
       : `<div class="card-thumb-placeholder">📖</div>`}
     <div class="card-body">
       <div class="card-title">${esc(work.title)}</div>

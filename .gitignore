@@ -26,6 +26,7 @@ local.properties
 *.sqlite
 *.sqlite3
 library.db
+data/thumbs/
 logs/
 *.log
 npm-debug.log*

@@ -7,6 +7,7 @@ const os     = require('os');
 const db          = require('./db');
 const scanEngine  = require('./scan-engine');
 const mediaServer = require('./media-server');
+const thumbs      = require('./main/thumbs/thumb-service');
 
 let mainWindow = null;
 let scanCancelled = false;
@@ -14,6 +15,7 @@ let scanCancelled = false;
 // ── 앱 초기화 ──────────────────────────────────────────────
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
+  thumbs.init(path.join(userDataPath, 'data', 'thumbs'));
   await db.init(userDataPath);
 
   const port = mediaServer.start(db.db(), 17099);
@@ -86,11 +88,17 @@ ipcMain.handle('scan:start', async (event, rootId) => {
   const foundPaths = [];
 
   const onWork = async (workInfo) => {
+    const thumbPath = await thumbs.ensureThumbnail({
+      ...workInfo,
+      root_path: root.path,
+      leaf_path: path.relative(root.path, workInfo.folder_path),
+    });
     const id = db.upsertWork({
       folder_path: workInfo.folder_path,
       title:       workInfo.title,
       root_id:     rootId,
       cover_path:  workInfo.cover_path,
+      thumb_path:  thumbPath,
       page_count:  workInfo.page_count,
       has_video:   workInfo.has_video,
       artist:      workInfo.artist,
