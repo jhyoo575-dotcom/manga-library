@@ -1,5 +1,6 @@
 'use strict';
 const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path   = require('path');
 const fs     = require('fs');
 const os     = require('os');
@@ -11,6 +12,12 @@ const thumbs      = require('./main/thumbs/thumb-service');
 
 let mainWindow = null;
 let scanCancelled = false;
+let updateStatus = {
+  state: 'idle',
+  message: '업데이트 확인 대기 중',
+  version: app.getVersion(),
+  percent: 0,
+};
 
 // ── 앱 초기화 ──────────────────────────────────────────────
 app.whenReady().then(async () => {
@@ -22,6 +29,7 @@ app.whenReady().then(async () => {
   console.log(`[Main] Media server on port ${port}`);
 
   createWindow();
+  setupAutoUpdater();
 });
 
 app.on('window-all-closed', () => {
@@ -56,6 +64,71 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   if (process.env.DEV) mainWindow.webContents.openDevTools();
+}
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => setUpdateStatus('checking', '업데이트 확인 중...'));
+  autoUpdater.on('update-available', info => {
+    setUpdateStatus('available', `새 버전 ${info.version} 다운로드 중...`, info);
+  });
+  autoUpdater.on('update-not-available', () => setUpdateStatus('not-available', '현재 최신 버전입니다'));
+  autoUpdater.on('download-progress', progress => {
+    const percent = Math.round(progress.percent || 0);
+    setUpdateStatus('downloading', `업데이트 다운로드 중... ${percent}%`, { percent });
+  });
+  autoUpdater.on('error', err => setUpdateStatus('error', `업데이트 오류: ${err.message}`));
+  autoUpdater.on('update-downloaded', info => {
+    setUpdateStatus('downloaded', `새 버전 ${info.version} 다운로드 완료`, info);
+    promptInstallUpdate(info);
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    setTimeout(() => checkForUpdates(false), 2500);
+  });
+}
+
+function setUpdateStatus(state, message, extra = {}) {
+  updateStatus = {
+    ...updateStatus,
+    ...extra,
+    state,
+    message,
+    version: app.getVersion(),
+  };
+  mainWindow?.webContents.send('updater:status', updateStatus);
+}
+
+async function checkForUpdates(manual = false) {
+  if (!app.isPackaged && !process.env.FORCE_AUTO_UPDATE) {
+    setUpdateStatus('disabled', '설치된 앱에서만 업데이트 확인이 활성화됩니다');
+    return updateStatus;
+  }
+
+  try {
+    setUpdateStatus('checking', '업데이트 확인 중...');
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    setUpdateStatus('error', `업데이트 확인 실패: ${err.message}`);
+    if (manual) throw err;
+  }
+  return updateStatus;
+}
+
+async function promptInstallUpdate(info) {
+  if (!mainWindow) return;
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    buttons: ['지금 재시작', '나중에'],
+    defaultId: 0,
+    cancelId: 1,
+    title: '업데이트 준비 완료',
+    message: `Manga Library ${info.version} 업데이트가 준비되었습니다.`,
+    detail: '지금 재시작하면 새 버전으로 설치됩니다.',
+  });
+  if (result.response === 0) autoUpdater.quitAndInstall(false, true);
 }
 
 // ── IPC 핸들러 ─────────────────────────────────────────────
@@ -199,6 +272,10 @@ ipcMain.handle('server:info', () => {
     mobileOpdsUrl: networkUrls[0] ? `${networkUrls[0]}/opds` : '',
   };
 });
+
+// 업데이트
+ipcMain.handle('updater:check', () => checkForUpdates(true));
+ipcMain.handle('updater:status', () => updateStatus);
 
 // 윈도우 컨트롤
 ipcMain.on('win:minimize', () => mainWindow?.minimize());

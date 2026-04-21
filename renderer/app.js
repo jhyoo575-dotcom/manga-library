@@ -111,9 +111,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('click', closeWorkContextMenu);
   window.addEventListener('blur', closeWorkContextMenu);
   api.scan.onProgress(d => onScanProgress(d));
+  api.updater.onStatus(d => renderUpdateStatus(d));
   await Promise.all([loadStats(), loadRoots(), loadTags()]);
   await loadGallery();
   loadServerInfo();
+  loadUpdateStatus();
 });
 
 // ── 뷰 전환 ────────────────────────────────────
@@ -1021,6 +1023,28 @@ async function loadServerInfo() {
 
 function copyText(text) {
   navigator.clipboard.writeText(text).catch(() => {});
+}
+
+async function loadUpdateStatus() {
+  try {
+    renderUpdateStatus(await api.updater.status());
+  } catch {}
+}
+
+async function checkUpdateNow() {
+  renderUpdateStatus({ message: '업데이트 확인 중...' });
+  try {
+    renderUpdateStatus(await api.updater.check());
+  } catch (e) {
+    renderUpdateStatus({ state: 'error', message: '업데이트 확인 실패: ' + e.message });
+  }
+}
+
+function renderUpdateStatus(status) {
+  const el = document.getElementById('update-status');
+  if (!el || !status) return;
+  el.textContent = status.message || '업데이트 확인 대기 중';
+  el.dataset.state = status.state || 'idle';
 }
 
 // ── 키보드 단축키 ──────────────────────────────

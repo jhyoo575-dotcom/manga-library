@@ -53,6 +53,12 @@ contextBridge.exposeInMainWorld('api', {
   server: {
     info: () => ipcRenderer.invoke('server:info'),
   },
+  // App updater
+  updater: {
+    check:    ()   => ipcRenderer.invoke('updater:check'),
+    status:   ()   => ipcRenderer.invoke('updater:status'),
+    onStatus: (cb) => ipcRenderer.on('updater:status', (_, d) => cb(d)),
+  },
   // Window controls
   win: {
     minimize: () => ipcRenderer.send('win:minimize'),

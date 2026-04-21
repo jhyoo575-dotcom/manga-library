@@ -1,6 +1,6 @@
 {
   "name": "manga-library",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Local manga and image library manager with Mihon integration",
   "author": "jhyoo575-dotcom",
   "main": "src/main.js",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "adm-zip": "^0.5.17",
+    "electron-updater": "^6.8.3",
     "sharp": "^0.34.5",
     "sql.js": "^1.12.0"
   },
@@ -29,6 +30,11 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "jhyoo575-dotcom",
+      "repo": "manga-library"
     },
     "nsis": {
       "oneClick": false,
