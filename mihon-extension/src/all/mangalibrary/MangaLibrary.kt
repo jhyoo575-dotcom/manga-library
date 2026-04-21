@@ -20,7 +20,9 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-class MangaLibrary : HttpSource(), ConfigurableSource {
+class MangaLibrary :
+    HttpSource(),
+    ConfigurableSource {
     override val name = "Manga Library"
     override val lang = "all"
     override val supportsLatest = true

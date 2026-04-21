@@ -52,6 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: manga-library-build
+          if-no-files-found: error
           path: |
             dist/*.exe
             mihon-extension-build/src/all/mangalibrary/build/outputs/apk/debug/*.apk
